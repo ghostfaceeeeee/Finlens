@@ -1,6 +1,3 @@
-/**
- * server/middleware/index.js
- */
 const helmet = require('helmet');
 const cors = require('cors');
 const morgan = require('morgan');
@@ -15,9 +12,13 @@ const security = [
         styleSrc:   ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://unpkg.com"],
         fontSrc:    ["'self'", "https://fonts.gstatic.com"],
         imgSrc:     ["'self'", "data:", "https:", "blob:"],
-        connectSrc: ["'self'", "https://api.anthropic.com", "https://api.coingecko.com",
-                     "https://query1.finance.yahoo.com", "https://query2.finance.yahoo.com",
-                     "https://api.open-meteo.com", "https://newsdata.io"],
+        connectSrc: ["'self'",
+                     "https://api.groq.com",
+                     "https://api.coingecko.com",
+                     "https://query1.finance.yahoo.com",
+                     "https://query2.finance.yahoo.com",
+                     "https://api.open-meteo.com",
+                     "https://newsdata.io"],
         workerSrc:  ["'self'", "blob:"],
       },
     },
