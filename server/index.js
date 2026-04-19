@@ -1,6 +1,3 @@
-/**
- * server/index.js — FinLens entry point
- */
 require('dotenv').config();
 const express  = require('express');
 const path     = require('path');
@@ -10,7 +7,7 @@ const authRoutes      = require('./routes/auth');
 const marketRoutes    = require('./routes/market');
 const aiRoutes        = require('./routes/ai');
 const watchlistRoutes = require('./routes/watchlist');
-const { startJobs, addClient, removeClient, updateAllPrices } = require('./jobs/priceFetcher');
+const { startJobs, addClient, removeClient, updateAllPrices, seedHistoryForAsset } = require('./jobs/priceFetcher');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -67,8 +64,32 @@ app.listen(PORT, async () => {
   console.log(`\n🚀 FinLens running → http://localhost:${PORT}`);
   console.log(`   Mode: ${process.env.NODE_ENV || 'development'}`);
   startJobs();
-  // Fetch harga pertama kali saat startup
-  setTimeout(() => updateAllPrices().catch(() => {}), 2000);
+
+  // Fetch harga & seed history saat startup
+  setTimeout(async () => {
+    try {
+      // 1. Update harga terkini dulu
+      await updateAllPrices().catch(() => {});
+
+      // 2. Seed history untuk aset yang belum punya data
+      const { assets, priceHistory } = require('./db/queries');
+      const all = assets.getAll();
+      console.log(`[STARTUP] Mengecek history untuk ${all.length} aset...`);
+
+      for (const asset of all) {
+        const existing = priceHistory.get(asset.id, 1);
+        if (!existing || existing.length === 0) {
+          console.log(`[STARTUP] Seeding history: ${asset.symbol}`);
+          await seedHistoryForAsset(asset, 90);
+          // Jeda kecil agar tidak kena rate limit Yahoo
+          await new Promise(r => setTimeout(r, 300));
+        }
+      }
+      console.log('[STARTUP] History seeding selesai ✓');
+    } catch (e) {
+      console.warn('[STARTUP] Error:', e.message);
+    }
+  }, 2000);
 });
 
 module.exports = app;
