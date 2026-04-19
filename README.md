@@ -1,10 +1,10 @@
-# 📈 FinLens v1.0 — Financial Market Dashboard
+# FinLens v1.0 — Financial Market Dashboard
 
 Dashboard pasar keuangan real-time: saham IDX & AS, kripto, emas, minyak, forex, indeks global. Dengan AI analisis berbasis Claude, watchlist CRUD, login/register, dan berita pasar.
 
 ---
 
-## 🚀 Quick Start (3 langkah)
+## Quick Start (3 langkah)
 
 ```bash
 # 1. Masuk ke folder
@@ -23,7 +23,7 @@ npm run dev     # buka http://localhost:3000
 
 ---
 
-## 📁 Struktur Proyek (25 file)
+## Struktur Project (25 file)
 
 ```
 finlens/
@@ -63,7 +63,7 @@ finlens/
 
 ---
 
-## 🔑 Konfigurasi .env
+## Config .env
 
 ```env
 PORT=3000
@@ -77,7 +77,7 @@ DB_PATH=./database/finlens.db
 
 ---
 
-## 📡 API Endpoints
+## API Endpoints
 
 ### Auth
 ```
@@ -120,7 +120,7 @@ GET /api/events   → SSE live feed
 
 ---
 
-## 🏗️ Keputusan Arsitektur
+## Keputusan Arsitektur
 
 | Aspek | Pilihan | Alasan |
 |-------|---------|--------|
@@ -135,7 +135,7 @@ GET /api/events   → SSE live feed
 
 ---
 
-## 🌐 Free APIs yang Digunakan
+## Free APIs yang Digunakan
 
 | API | Data | Key? |
 |-----|------|------|
@@ -143,20 +143,7 @@ GET /api/events   → SSE live feed
 | [Yahoo Finance](https://query1.finance.yahoo.com) | Saham, komoditas, forex, indeks | ❌ Tidak perlu |
 | [Anthropic Claude](https://anthropic.com) | AI analisis | ✅ Diperlukan |
 
----
-
-## 📱 Mobile Support
-
-- ✅ Hamburger menu di mobile
-- ✅ Sidebar slide-in dari kiri
-- ✅ Asset grid responsive (1-2-3 kolom)
-- ✅ AI panel full-screen di mobile
-- ✅ Tabel dengan kolom tersembunyi di layar kecil
-- ✅ Touch-friendly tap targets
-
----
-
-## 🚀 Production Deployment
+## Production Deployment
 
 ```bash
 # Set environment
@@ -174,7 +161,7 @@ pm2 save
 
 ---
 
-## 🔧 Development Scripts
+## Development Scripts
 
 ```bash
 npm run dev    # Start dengan auto-reload (node --watch)
@@ -184,7 +171,7 @@ npm run seed   # Reset & seed ulang database
 
 ---
 
-## 📦 Dependencies
+## Dependencies
 
 ```
 express         — HTTP server & routing
