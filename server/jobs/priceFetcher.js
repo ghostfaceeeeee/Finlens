@@ -18,15 +18,29 @@ function broadcast(event, data) {
   clients.forEach(r => { try { r.write(payload); } catch { clients.delete(r); } });
 }
 
+// Header standar untuk semua request Yahoo Finance
+const YAHOO_HEADERS = {
+  'Accept': 'application/json, text/plain, */*',
+  'Accept-Language': 'en-US,en;q=0.9',
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  'Origin': 'https://finance.yahoo.com',
+  'Referer': 'https://finance.yahoo.com/',
+};
+
 // IDR exchange rate (fetch sekali per jam)
 let usdToIdr = 16200;
 async function fetchUsdIdr() {
   try {
-    const r = await fetch('https://query1.finance.yahoo.com/v8/finance/chart/USDIDR=X?interval=1d&range=1d');
+    const r = await fetch('https://query2.finance.yahoo.com/v8/finance/chart/USDIDR=X?interval=1d&range=1d', {
+      headers: YAHOO_HEADERS,
+    });
     const d = await r.json();
     const p = d?.chart?.result?.[0]?.meta?.regularMarketPrice;
     if (p) usdToIdr = p;
-  } catch {}
+    console.log(`[PRICE] USD/IDR: ${usdToIdr}`);
+  } catch (e) {
+    console.warn('[PRICE] USD/IDR fetch failed, pakai fallback:', usdToIdr);
+  }
 }
 
 // ── COINGECKO: fetch crypto ────────────────────────────────────
@@ -37,7 +51,10 @@ async function fetchCrypto(cryptoAssets) {
     if (!ids) return;
     const url = `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${ids}&order=market_cap_desc&sparkline=false&price_change_percentage=24h`;
     const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
-    if (!r.ok) return;
+    if (!r.ok) {
+      console.warn('[PRICE] CoinGecko response:', r.status);
+      return;
+    }
     const coins = await r.json();
 
     coins.forEach(c => {
@@ -73,19 +90,37 @@ async function fetchYahoo(yahooAssets) {
     for (let i = 0; i < yahooAssets.length; i += 20)
       chunks.push(yahooAssets.slice(i, i + 20));
 
+    let successCount = 0;
+
     for (const chunk of chunks) {
       const syms = chunk.map(a => a.yahoo_symbol || a.symbol).join(',');
-      const url  = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${syms}&fields=regularMarketPrice,regularMarketChange,regularMarketChangePercent,regularMarketVolume,regularMarketDayHigh,regularMarketDayLow,marketCap,fiftyTwoWeekHigh,fiftyTwoWeekLow`;
-      const r    = await fetch(url, { headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' } });
-      if (!r.ok) continue;
-      const data = await r.json();
-      const quotes = data?.quoteResponse?.result || [];
 
+      // Coba query2 dulu, fallback ke query1
+      let data = null;
+      for (const host of ['query2', 'query1']) {
+        try {
+          const url = `https://${host}.finance.yahoo.com/v8/finance/quote?symbols=${encodeURIComponent(syms)}`;
+          const r = await fetch(url, { headers: YAHOO_HEADERS });
+          if (!r.ok) {
+            console.warn(`[PRICE] ${host} responded ${r.status} for: ${syms}`);
+            continue;
+          }
+          data = await r.json();
+          break; // sukses, keluar dari loop
+        } catch (e) {
+          console.warn(`[PRICE] ${host} error:`, e.message);
+        }
+      }
+
+      if (!data) continue;
+
+      const quotes = data?.quoteResponse?.result || [];
       quotes.forEach(q => {
         const sym   = q.symbol;
         const asset = chunk.find(a => (a.yahoo_symbol || a.symbol) === sym);
         if (!asset) return;
         const price = q.regularMarketPrice;
+        if (!price) return;
         priceCache.upsert(asset.id, {
           price,
           priceIdr:   asset.currency === 'IDR' ? price : Math.round(price * usdToIdr),
@@ -100,33 +135,74 @@ async function fetchYahoo(yahooAssets) {
           atl:        q.fiftyTwoWeekLow,
           atlDate:    null,
         });
+        successCount++;
       });
+
+      // Jeda kecil antar chunk agar tidak di-rate-limit
+      if (chunks.length > 1) await sleep(500);
     }
-    console.log(`[PRICE] Yahoo: ${yahooAssets.length} assets processed`);
+
+    console.log(`[PRICE] Yahoo: ${successCount}/${yahooAssets.length} assets updated`);
   } catch (e) {
     console.warn('[PRICE] Yahoo fetch failed:', e.message);
   }
 }
 
-// ── NEWS FETCHER ──────────────────────────────────────────────
-// Gunakan RSS feeds gratis — tidak perlu API key
-const RSS_FEEDS = [
-  { url: 'https://feeds.finance.yahoo.com/rss/2.0/headline?s=^JKSE&region=US&lang=en-US', category: 'markets' },
-  { url: 'https://cointelegraph.com/rss', category: 'crypto' },
-  { url: 'https://feeds.bbci.co.uk/news/business/rss.xml', category: 'economy' },
-];
+// ── SEED HISTORY dari Yahoo ────────────────────────────────────
+async function seedHistoryForAsset(asset, days = 90) {
+  try {
+    const sym   = asset.yahoo_symbol || asset.symbol;
+    const end   = Math.floor(Date.now() / 1000);
+    const start = end - days * 86400;
 
+    // Coba query2 dulu, fallback ke query1
+    let data = null;
+    for (const host of ['query2', 'query1']) {
+      try {
+        const url = `https://${host}.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=1d&period1=${start}&period2=${end}`;
+        const r = await fetch(url, { headers: YAHOO_HEADERS });
+        if (!r.ok) continue;
+        data = await r.json();
+        break;
+      } catch {}
+    }
+
+    if (!data) return false;
+    const result = data?.chart?.result?.[0];
+    if (!result) return false;
+
+    const ts    = result.timestamp || [];
+    const ohlcv = result.indicators?.quote?.[0] || {};
+    const rows  = ts.map((t, i) => [
+      asset.id,
+      new Date(t * 1000).toISOString().split('T')[0],
+      ohlcv.open?.[i]   || null,
+      ohlcv.high?.[i]   || null,
+      ohlcv.low?.[i]    || null,
+      ohlcv.close?.[i]  || null,
+      ohlcv.volume?.[i] || null,
+    ]).filter(r => r[4] !== null);
+
+    priceHistory.bulkInsert(rows);
+    console.log(`[HISTORY] ${sym}: ${rows.length} hari tersimpan`);
+    return true;
+  } catch (e) {
+    console.warn(`[HISTORY] seedHistoryForAsset error:`, e.message);
+    return false;
+  }
+}
+
+// ── NEWS FETCHER ──────────────────────────────────────────────
 async function fetchNews() {
   try {
     const db = getDb();
     const existing = db.prepare('SELECT COUNT(*) as n FROM news_cache WHERE fetched_at > datetime("now", "-30 minutes")').get();
-    if (existing.n > 10) return; // sudah ada berita segar
+    if (existing.n > 10) return;
 
-    // Fallback: generate curated news untuk demo
     const demoNews = generateDemoNews();
     newsQ.insertMany(demoNews);
     newsQ.deleteOld(48);
-    console.log(`[NEWS] ${demoNews.length} berita demo disisipkan`);
+    console.log(`[NEWS] ${demoNews.length} berita disisipkan`);
   } catch (e) {
     console.warn('[NEWS] Fetch failed:', e.message);
   }
@@ -160,41 +236,11 @@ async function updateAllPrices() {
     fetchYahoo(yahooAssets),
   ]);
 
-  // Broadcast ke SSE clients
   broadcast('price_update', { ts: new Date().toISOString(), usd_idr: usdToIdr });
 }
 
-// ── SEED HISTORY dari Yahoo ────────────────────────────────────
-async function seedHistoryForAsset(asset, days = 90) {
-  try {
-    const sym    = asset.yahoo_symbol || asset.symbol;
-    const end    = Math.floor(Date.now() / 1000);
-    const start  = end - days * 86400;
-    const url    = `https://query1.finance.yahoo.com/v8/finance/chart/${sym}?interval=1d&period1=${start}&period2=${end}`;
-    const r      = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
-    if (!r.ok) return false;
-    const data   = await r.json();
-    const result = data?.chart?.result?.[0];
-    if (!result) return false;
-
-    const ts     = result.timestamp || [];
-    const ohlcv  = result.indicators?.quote?.[0] || {};
-    const rows   = ts.map((t, i) => [
-      asset.id,
-      new Date(t * 1000).toISOString().split('T')[0],
-      ohlcv.open?.[i]   || null,
-      ohlcv.high?.[i]   || null,
-      ohlcv.low?.[i]    || null,
-      ohlcv.close?.[i]  || null,
-      ohlcv.volume?.[i] || null,
-    ]).filter(r => r[4] !== null);
-
-    priceHistory.bulkInsert(rows);
-    return true;
-  } catch {
-    return false;
-  }
-}
+// ── HELPER ────────────────────────────────────────────────────
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 // ── CRON JOBS ─────────────────────────────────────────────────
 function startJobs() {
