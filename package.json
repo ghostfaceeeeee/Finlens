@@ -4,7 +4,7 @@
   "description": "FinLens — Real-time Financial Market Dashboard",
   "main": "server/index.js",
   "scripts": {
-    "start": "node server/index.js",
+    "start": "node scripts/seed.js && node server/index.js",
     "dev": "node --watch server/index.js",
     "seed": "node scripts/seed.js",
     "setup": "npm install && node scripts/seed.js && echo '\n✅ Setup selesai! Jalankan: npm run dev'"
