@@ -1,5 +1,7 @@
 # FinLens v1.0 — Financial Market Dashboard
 
+![image](./screenshot/Home.png)
+
 Dashboard pasar keuangan real-time: saham IDX & AS, kripto, emas, minyak, forex, indeks global. Dengan AI analisis berbasis Claude, watchlist CRUD, login/register, dan berita pasar.
 
 ---
